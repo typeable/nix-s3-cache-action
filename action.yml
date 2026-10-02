@@ -1,0 +1,70 @@
+name: Nix S3 cache
+description: Enable Nix build path recording and upload recorded paths to an S3 binary cache.
+
+inputs:
+  operation:
+    description: "Operation to run: enable-recorder or upload."
+    required: true
+  aws-role-to-assume:
+    description: AWS IAM role to assume before uploading Nix paths.
+    required: false
+  aws-region:
+    description: AWS region for the Nix cache upload role.
+    required: false
+    default: us-east-1
+  role-duration-seconds:
+    description: AWS role duration for the Nix cache upload role.
+    required: false
+    default: "21600"
+  cache-private-key:
+    description: Private signing key for the Nix binary cache.
+    required: false
+  cache-s3-store-url:
+    description: Nix S3 store URL used as the nix copy destination.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Validate operation
+      shell: bash
+      env:
+        OPERATION: ${{ inputs.operation }}
+      run: |
+        set -euo pipefail
+
+        case "$OPERATION" in
+          enable-recorder|upload) ;;
+          *)
+            echo "Unsupported operation: $OPERATION" >&2
+            echo "Expected one of: enable-recorder, upload" >&2
+            exit 1
+            ;;
+        esac
+
+    - name: Enable Nix remote cache path recorder
+      if: ${{ inputs.operation == 'enable-recorder' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/enable-recorder.sh"
+
+    - name: Configure AWS credentials for Nix cache upload
+      if: ${{ inputs.operation == 'upload' }}
+      uses: aws-actions/configure-aws-credentials@v6
+      with:
+        role-to-assume: ${{ inputs.aws-role-to-assume }}
+        aws-region: ${{ inputs.aws-region }}
+        role-duration-seconds: ${{ inputs.role-duration-seconds }}
+
+    - name: Upload built Nix paths to S3 cache
+      if: ${{ inputs.operation == 'upload' }}
+      shell: bash
+      env:
+        NIX_CACHE_PRIVATE_KEY: ${{ inputs.cache-private-key }}
+        NIX_CACHE_S3_STORE_URL: ${{ inputs.cache-s3-store-url }}
+      run: bash "$GITHUB_ACTION_PATH/upload.sh"
+
+    - name: Clean up Nix S3 cache files
+      if: ${{ always() && inputs.operation == 'upload' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/cleanup.sh"
+
