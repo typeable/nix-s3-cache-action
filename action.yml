@@ -22,6 +22,10 @@ inputs:
   cache-s3-store-url:
     description: Nix S3 store URL used as the nix copy destination.
     required: false
+  cache-query-jobs:
+    description: Number of parallel cache metadata queries (1 disables prefetch; maximum 128).
+    required: false
+    default: "16"
 
 runs:
   using: composite
@@ -61,10 +65,10 @@ runs:
       env:
         NIX_CACHE_PRIVATE_KEY: ${{ inputs.cache-private-key }}
         NIX_CACHE_S3_STORE_URL: ${{ inputs.cache-s3-store-url }}
+        NIX_CACHE_QUERY_JOBS: ${{ inputs.cache-query-jobs }}
       run: bash "$GITHUB_ACTION_PATH/upload.sh"
 
     - name: Clean up Nix S3 cache files
       if: ${{ always() && inputs.operation == 'upload' }}
       shell: bash
       run: bash "$GITHUB_ACTION_PATH/cleanup.sh"
-
